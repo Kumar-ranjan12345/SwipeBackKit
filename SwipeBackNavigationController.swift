@@ -90,7 +90,7 @@ private class SwipeBackConfig {
 // MARK: - Associated Object Keys
 
 /// Key for storing the wave overlay reference on the view controller.
-private var kOverlay = "swb_overlay"
+private var kOverlay: UInt8 = 0
 
 // MARK: - UINavigationController Extension (Push/Pop)
 
