@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name         = 'SwipeBackKit'
-  s.version      = '1.0.0'
+  s.version      = '1.1.0'
   s.summary      = 'Android-style edge swipe navigation for iOS — both edges, wave animation, push & present support.'
   s.description  = <<-DESC
     SwipeBack brings Android 10+ style back gesture to iOS.

@@ -13,6 +13,13 @@ Android-style edge swipe navigation for iOS — both edges, elastic wave animati
 - **Haptic feedback** — at gesture start and completion threshold
 - **Zero config** — one line in AppDelegate, no subclassing
 
+## What's New in v1.1.0
+
+- **Disable per-screen** — `SwipeBackManager.disable(for: self)` in any ViewController
+- **SwiftUI support** — `.swipeBackDisabled()` modifier
+- **Spring-back animation** — wave bounces back to edge when gesture is cancelled
+- **Double-swipe to exit** — swipe on root screen shows "Swipe again to exit" toast; second swipe moves app to background
+
 ## Installation
 
 ### Swift Package Manager
@@ -49,6 +56,19 @@ SwipeBackManager.enable(
     rightEdge: true,   // right edge → back (default: true)
     haptic:    true    // haptic feedback (default: true)
 )
+
+// Disable on a specific screen
+override func viewDidLoad() {
+    super.viewDidLoad()
+    SwipeBackManager.disable(for: self)
+}
+
+// SwiftUI
+MyView()
+    .swipeBackDisabled()
+
+// Disable exit-on-root behavior
+SwipeBackManager.enable(exitOnRootSwipe: false)
 ```
 
 ### Optional: Subclass
