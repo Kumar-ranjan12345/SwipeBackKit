@@ -1,7 +1,7 @@
 import UIKit
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SwipeBack
+// SwipeBackKit
 // Android-style edge swipe navigation for iOS
 //
 // Features:

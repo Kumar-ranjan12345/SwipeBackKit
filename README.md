@@ -1,8 +1,8 @@
-# SwipeBack
+# SwipeBackKit
 
 Android-style edge swipe navigation for iOS — both edges, elastic wave animation, works for push and present.
 
-> This feature is not available in any existing iOS library. SloppySwiper only handles left-edge pop with no visual feedback. SwipeBack adds right-edge support, present/dismiss handling, and the Android elastic wave indicator.
+> This feature is not available in any existing iOS library. SloppySwiper only handles left-edge pop with no visual feedback. SwipeBackKit adds right-edge support, present/dismiss handling, and the Android elastic wave indicator.
 
 ## Features
 
@@ -19,13 +19,13 @@ Android-style edge swipe navigation for iOS — both edges, elastic wave animati
 
 In Xcode → File → Add Package Dependencies:
 ```
-https://github.com/Kumar-ranjan12345/SwipeBack
+https://github.com/Kumar-ranjan12345/SwipeBackKit
 ```
 
 ### CocoaPods
 
 ```ruby
-pod 'SwipeBack'
+pod 'SwipeBackKit'
 ```
 
 ## Usage
