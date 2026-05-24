@@ -19,17 +19,58 @@ import SwiftUI
 
 // MARK: - SwipeBackManager
 
-/// Entry point for SwipeBackKit.
-/// Call `SwipeBackManager.enable()` once in `AppDelegate.didFinishLaunching`.
+/// The primary class for integrating SwipeBackKit with your app.
+///
+/// SwipeBackKit brings Android 10+ style back gesture to iOS — swipe from
+/// either edge of the screen to navigate back, with an elastic wave animation
+/// and haptic feedback.
+///
+/// **Quick start:**
+/// ```swift
+/// // AppDelegate.swift
+/// func application(_ application: UIApplication,
+///                  didFinishLaunchingWithOptions launchOptions: ...) -> Bool {
+///     SwipeBackManager.enable()
+///     return true
+/// }
+/// ```
+///
+/// **With options:**
+/// ```swift
+/// SwipeBackManager.enable(
+///     leftEdge:        true,   // left edge → back
+///     rightEdge:       true,   // right edge → back (Android 10+ style)
+///     haptic:          true,   // haptic feedback at threshold
+///     exitOnRootSwipe: true    // double-swipe to exit on root screen
+/// )
+/// ```
 public class SwipeBackManager {
 
     /// Enables Android-style swipe-back for the entire app.
     ///
-    /// - Parameters:
-    ///   - leftEdge:         Enable swipe from left edge. Default: true
-    ///   - rightEdge:        Enable swipe from right edge. Default: true
-    ///   - haptic:           Enable haptic feedback. Default: true
-    ///   - exitOnRootSwipe:  Show "Swipe again to exit" toast when on root screen. Default: true
+    /// Call this once in `AppDelegate.application(_:didFinishLaunchingWithOptions:)`.
+    /// All `UINavigationController` instances and modally presented view controllers
+    /// in the app will automatically receive swipe-back support — no subclassing required.
+    ///
+    /// - parameter leftEdge:        Whether to enable swipe from the left edge of the screen.
+    ///                              This is the standard iOS back direction. Defaults to `true`.
+    /// - parameter rightEdge:       Whether to enable swipe from the right edge of the screen.
+    ///                              This mirrors Android 10+ behavior. Defaults to `true`.
+    /// - parameter haptic:          Whether to trigger haptic feedback when the gesture begins
+    ///                              and when the back threshold is reached. Defaults to `true`.
+    /// - parameter exitOnRootSwipe: Whether to show a "Swipe again to exit" toast when the user
+    ///                              swipes on the root (first) screen. A second swipe within 2
+    ///                              seconds moves the app to the background. Defaults to `true`.
+    ///
+    /// **Example — Default (all features enabled):**
+    /// ```swift
+    /// SwipeBackManager.enable()
+    /// ```
+    ///
+    /// **Example — Disable right edge and exit behavior:**
+    /// ```swift
+    /// SwipeBackManager.enable(rightEdge: false, exitOnRootSwipe: false)
+    /// ```
     public static func enable(
         leftEdge:        Bool = true,
         rightEdge:       Bool = true,
@@ -44,15 +85,26 @@ public class SwipeBackManager {
         SwipeBackConfig.swizzleViewController()
     }
 
-    /// Disables swipe-back for a specific view controller.
-    /// Call in viewDidLoad or viewWillAppear.
+    /// Disables the swipe-back gesture for a specific view controller.
     ///
-    /// Example:
+    /// Use this on screens where the edge swipe would conflict with your UI —
+    /// for example, a drawing canvas, a map, or a carousel.
+    /// The gesture is automatically re-enabled when the view controller is deallocated.
+    ///
+    /// - parameter viewController: The view controller on which to disable swipe-back.
+    ///
+    /// **Example:**
     /// ```swift
     /// override func viewDidLoad() {
     ///     super.viewDidLoad()
-    ///     SwipeBackManager.disable(for: self)  // no swipe on this screen
+    ///     SwipeBackManager.disable(for: self)
     /// }
+    /// ```
+    ///
+    /// **SwiftUI equivalent:**
+    /// ```swift
+    /// MyView()
+    ///     .swipeBackDisabled()
     /// ```
     public static func disable(for viewController: UIViewController) {
         objc_setAssociatedObject(
@@ -63,7 +115,12 @@ public class SwipeBackManager {
         )
     }
 
-    /// Re-enables swipe-back for a specific view controller (if previously disabled).
+    /// Re-enables the swipe-back gesture for a specific view controller.
+    ///
+    /// Only needed if you previously called `disable(for:)` and want to
+    /// re-enable the gesture dynamically (e.g. after a loading state completes).
+    ///
+    /// - parameter viewController: The view controller on which to re-enable swipe-back.
     public static func enable(for viewController: UIViewController) {
         objc_setAssociatedObject(
             viewController,
@@ -73,7 +130,10 @@ public class SwipeBackManager {
         )
     }
 
-    /// Returns true if swipe-back is disabled for the given view controller.
+    /// Returns whether swipe-back is currently disabled for the given view controller.
+    ///
+    /// - parameter viewController: The view controller to check.
+    /// - returns: `true` if swipe-back has been disabled via `disable(for:)`, `false` otherwise.
     public static func isDisabled(for viewController: UIViewController) -> Bool {
         return objc_getAssociatedObject(viewController, &SwipeBackConfig.kDisabled) as? Bool ?? false
     }
@@ -82,15 +142,23 @@ public class SwipeBackManager {
 // MARK: - SwiftUI Support
 
 #if canImport(SwiftUI)
-/// SwiftUI view modifier to disable swipe-back on a specific view.
+/// A SwiftUI `ViewModifier` that disables the SwipeBackKit edge gesture on the modified view.
 ///
-/// Usage:
+/// Apply this modifier using the `.swipeBackDisabled()` convenience extension on `View`.
+///
+/// **Example:**
 /// ```swift
-/// MyView()
-///     .swipeBackDisabled()
+/// struct DrawingCanvasView: View {
+///     var body: some View {
+///         Canvas { ... }
+///             .swipeBackDisabled()  // edge swipe would conflict with drawing
+///     }
+/// }
 /// ```
 @available(iOS 14.0, *)
 public struct SwipeBackDisabledModifier: ViewModifier {
+    /// Applies the modifier by injecting a hidden `UIViewController` that disables
+    /// the swipe gesture when it appears and re-enables it when it disappears.
     public func body(content: Content) -> some View {
         content
             .background(SwipeBackDisabledRepresentable())
@@ -126,14 +194,30 @@ class SwipeBackDisablerVC: UIViewController {
 
 @available(iOS 14.0, *)
 extension View {
-    /// Disables SwipeBackKit gesture on this SwiftUI view.
+    /// Disables the SwipeBackKit edge swipe gesture on this SwiftUI view.
+    ///
+    /// Use this on views where an edge swipe would conflict with your UI,
+    /// such as drawing canvases, maps, carousels, or custom gesture-heavy screens.
+    ///
+    /// - returns: A view with the SwipeBackKit gesture disabled.
+    ///
+    /// **Example:**
+    /// ```swift
+    /// MapView()
+    ///     .swipeBackDisabled()
+    /// ```
     public func swipeBackDisabled() -> some View {
         modifier(SwipeBackDisabledModifier())
     }
 
-    /// Explicitly enables SwipeBackKit gesture on this SwiftUI view (default behavior).
+    /// Explicitly marks this SwiftUI view as swipe-back enabled.
+    ///
+    /// This is the default behavior — calling this method is a no-op and exists
+    /// only for documentation clarity in code that conditionally enables/disables.
+    ///
+    /// - returns: The unmodified view.
     public func swipeBackEnabled() -> some View {
-        self // enabled by default, this is a no-op for clarity
+        self
     }
 }
 #endif
@@ -390,13 +474,38 @@ extension UIViewController {
 
 // MARK: - SwipeWaveOverlay
 
-/// Full-screen transparent overlay — Android-style elastic wave + chevron arrow.
+/// A full-screen transparent overlay that renders the Android-style back gesture indicator.
+///
+/// This view is added to the host view when a swipe gesture begins and removed when it ends.
+/// It draws two visual elements:
+///
+/// 1. **Wave shape** — a smooth cubic bezier curve anchored to the screen edge.
+///    Both endpoints sit on the edge (x=0 or x=screenWidth), so the wave merges
+///    flush with the screen — no visible seam. The wave bulges inward as the user drags.
+///
+/// 2. **Chevron arrow** — a `‹` or `›` symbol that fades in after 20% drag and
+///    grows slightly as the user continues. The arrow is always positioned inside
+///    the wave bulge area.
+///
+/// When the gesture is cancelled, `springBack()` animates the wave back to the edge
+/// before the view fades out, giving a satisfying elastic feel.
 class SwipeWaveOverlay: UIView {
 
+    /// Whether the gesture is from the left edge (`true`) or right edge (`false`).
     private let isLeft: Bool
+
+    /// The current Y position of the user's finger. The wave follows this vertically.
     private var fingerY: CGFloat = 0
+
+    /// Drag progress from `0.0` (no drag) to `1.0` (full threshold reached).
+    /// Drives wave size, arrow opacity, and arrow size.
     private var progress: CGFloat = 0
+
+    /// Set to `true` when the user has dragged past the 50% threshold.
+    /// Triggers a haptic feedback pulse and is used to track state changes.
     var thresholdReached = false
+
+    /// The CAShapeLayer that renders the chevron arrow (`‹` or `›`).
     private let chevronLayer = CAShapeLayer()
 
     init(isLeft: Bool) {
@@ -414,6 +523,13 @@ class SwipeWaveOverlay: UIView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    /// Updates the overlay with the current finger position and drag progress.
+    ///
+    /// Called on every `.changed` event from the gesture recognizer.
+    /// Triggers a redraw of the wave shape and updates the chevron arrow.
+    ///
+    /// - parameter fingerY:  The current Y position of the user's finger in the host view's coordinate space.
+    /// - parameter progress: The drag progress from `0.0` (no drag) to `1.0` (full threshold).
     func update(fingerY: CGFloat, progress: CGFloat) {
         self.fingerY  = fingerY
         self.progress = progress
@@ -421,7 +537,10 @@ class SwipeWaveOverlay: UIView {
         updateChevron()
     }
 
-    /// Animates wave back to zero progress (spring-back on cancel).
+    /// Resets the wave to zero progress, creating a spring-back visual effect.
+    ///
+    /// Called when the gesture is cancelled or the user releases without reaching the threshold.
+    /// Should be called inside a `UIView.animate` block for the spring animation.
     func springBack() {
         progress = 0
         setNeedsDisplay()
@@ -492,7 +611,16 @@ class SwipeWaveOverlay: UIView {
 
 // MARK: - SwipeExitToast
 
-/// Android-style "Swipe again to exit" toast that appears from the top.
+/// An Android-style toast notification that slides in from the top of the screen.
+///
+/// Displayed when the user swipes on the root (first) view controller, informing them
+/// that a second swipe within 2 seconds will move the app to the background.
+///
+/// The toast uses a frosted glass (`UIBlurEffect`) background and auto-dismisses
+/// after 2 seconds with a slide-up fade animation.
+///
+/// This view is created and managed internally by `SwipeBackKit`.
+/// You do not need to instantiate it directly.
 class SwipeExitToast: UIView {
 
     init() {
@@ -533,9 +661,25 @@ class SwipeExitToast: UIView {
 
 // MARK: - SwipeBackNavigationController
 
-/// Optional subclass — use SwipeBackManager.enable() instead for app-wide support.
+/// An optional `UINavigationController` subclass that provides SwipeBackKit support.
+///
+/// Use this subclass if you prefer explicit opt-in over the global swizzle approach,
+/// or if you only want swipe-back on specific navigation controllers in your app.
+///
+/// For app-wide support, prefer `SwipeBackManager.enable()` in your AppDelegate instead.
+///
+/// **Usage — programmatic:**
+/// ```swift
+/// let nav = SwipeBackNavigationController(rootViewController: homeVC)
+/// window?.rootViewController = nav
+/// ```
+///
+/// **Usage — Storyboard:**
+/// Select your `UINavigationController` → Identity Inspector → Custom Class → `SwipeBackNavigationController`
 public class SwipeBackNavigationController: UINavigationController {
     public override func viewDidLoad() {
         super.viewDidLoad()
+        // Gesture setup is handled automatically by swb_navViewDidLoad via method swizzling.
+        // No additional configuration needed here.
     }
 }
