@@ -176,11 +176,6 @@ private var kNavDelegate:  UInt8 = 0
 final class SwbInteractiveTransition: UIPercentDrivenInteractiveTransition {
     /// Whether an interactive session is currently in progress.
     var isInteracting = false
-
-    override init() {
-        super.init()
-        completionSpeed = 0.85
-    }
 }
 
 // MARK: - SwbSlideTransition (Animated Transitioning)
