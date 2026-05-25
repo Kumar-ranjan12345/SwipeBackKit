@@ -398,11 +398,7 @@ extension UIViewController {
 
         guard presentingViewController != nil,
               !(self is UINavigationController),
-              !(self is UITabBarController),
-              navigationController == nil,
-              // Issue 2 fix: exclude SwiftUI hosting controllers which are sometimes
-              // temporarily embedded and have unpredictable presentingViewController state.
-              !NSStringFromClass(type(of: self)).contains("Hosting")
+              !(self is UITabBarController)
         else { return }
 
         view.gestureRecognizers?
