@@ -13,7 +13,12 @@ Android-style edge swipe navigation for iOS — both edges, elastic wave animati
 - **Haptic feedback** — at gesture start and completion threshold
 - **Zero config** — one line in AppDelegate, no subclassing
 
-## What's New in v1.1.0
+## What's New in v1.2.0
+
+- **Scroll view conflict fixed** — swipe-back now works correctly on screens with `UIScrollView`, `UITableView`, or `UICollectionView`. The edge gesture wins when the scroll view is at its leftmost/rightmost position.
+- **Half-screen present fixed** — swipe-back on the background view controller is now blocked when a sheet or modal is presented on top, preventing accidental navigation.
+
+
 
 - **Disable per-screen** — `SwipeBackManager.disable(for: self)` in any ViewController
 - **SwiftUI support** — `.swipeBackDisabled()` modifier
