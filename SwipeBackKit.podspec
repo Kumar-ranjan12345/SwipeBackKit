@@ -1,14 +1,18 @@
 Pod::Spec.new do |s|
   s.name         = 'SwipeBackKit'
-  s.version      = '1.2.2'
-  s.summary      = 'Android-style edge swipe navigation for iOS — both edges, wave animation, push & present support.'
+  s.version      = '1.3.0'
+  s.summary      = 'Android-style edge swipe navigation for iOS — predictive back, both edges, wave animation, push & present support.'
   s.description  = <<-DESC
-    SwipeBack brings Android 10+ style back gesture to iOS.
+    SwipeBackKit brings Android 10+ style back gesture to iOS.
+    - Predictive back: slow drag reveals previous screen live (interactive transition)
+    - Fast flick: instant pop — same as before
+    - Parallax slide transition (previous VC at 30% speed, current at 100%)
     - Swipe from LEFT or RIGHT edge to go back
     - Works for pushed ViewControllers (pop) AND presented ones (dismiss)
     - Android-style elastic wave animation anchored to screen edge
     - Chevron arrow grows inside the wave as you drag
     - Haptic feedback at trigger threshold
+    - Scroll view conflict resolved automatically
     - Zero configuration — one line in AppDelegate
     - No subclassing required
   DESC

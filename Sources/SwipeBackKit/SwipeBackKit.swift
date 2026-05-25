@@ -4,14 +4,15 @@ import SwiftUI
 #endif
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SwipeBackKit v1.1.0
+// SwipeBackKit v1.3.0
 // Android-style edge swipe navigation for iOS
 //
-// New in v1.1.0:
-//   • Disable per-screen: SwipeBackKit.disable(for: self)
-//   • SwiftUI support: .swipeBackEnabled() modifier
-//   • Spring-back animation when gesture is cancelled
-//   • Double-swipe to exit on root screen (with Android-style toast)
+// New in v1.3.0:
+//   • Predictive back — slow drag reveals previous screen live (interactive)
+//   • Fast flick → instant pop (same as before)
+//   • Parallax slide transition (previous VC at 30% speed, current at 100%)
+//   • UIPercentDrivenInteractiveTransition drives real VC transition
+//   • Wave overlay still plays during interactive transition
 //
 // Usage:
 //   SwipeBackManager.enable()   // in AppDelegate.didFinishLaunching
@@ -22,8 +23,8 @@ import SwiftUI
 /// The primary class for integrating SwipeBackKit with your app.
 ///
 /// SwipeBackKit brings Android 10+ style back gesture to iOS — swipe from
-/// either edge of the screen to navigate back, with an elastic wave animation
-/// and haptic feedback.
+/// either edge of the screen to navigate back, with an elastic wave animation,
+/// haptic feedback, and a fully interactive predictive transition.
 ///
 /// **Quick start:**
 /// ```swift
@@ -38,10 +39,10 @@ import SwiftUI
 /// **With options:**
 /// ```swift
 /// SwipeBackManager.enable(
-///     leftEdge:        true,   // left edge → back
-///     rightEdge:       true,   // right edge → back (Android 10+ style)
-///     haptic:          true,   // haptic feedback at threshold
-///     exitOnRootSwipe: true    // double-swipe to exit on root screen
+///     leftEdge:        true,
+///     rightEdge:       true,
+///     haptic:          true,
+///     exitOnRootSwipe: true
 /// )
 /// ```
 public class SwipeBackManager {
@@ -49,28 +50,11 @@ public class SwipeBackManager {
     /// Enables Android-style swipe-back for the entire app.
     ///
     /// Call this once in `AppDelegate.application(_:didFinishLaunchingWithOptions:)`.
-    /// All `UINavigationController` instances and modally presented view controllers
-    /// in the app will automatically receive swipe-back support — no subclassing required.
     ///
-    /// - parameter leftEdge:        Whether to enable swipe from the left edge of the screen.
-    ///                              This is the standard iOS back direction. Defaults to `true`.
-    /// - parameter rightEdge:       Whether to enable swipe from the right edge of the screen.
-    ///                              This mirrors Android 10+ behavior. Defaults to `true`.
-    /// - parameter haptic:          Whether to trigger haptic feedback when the gesture begins
-    ///                              and when the back threshold is reached. Defaults to `true`.
-    /// - parameter exitOnRootSwipe: Whether to show a "Swipe again to exit" toast when the user
-    ///                              swipes on the root (first) screen. A second swipe within 2
-    ///                              seconds moves the app to the background. Defaults to `true`.
-    ///
-    /// **Example — Default (all features enabled):**
-    /// ```swift
-    /// SwipeBackManager.enable()
-    /// ```
-    ///
-    /// **Example — Disable right edge and exit behavior:**
-    /// ```swift
-    /// SwipeBackManager.enable(rightEdge: false, exitOnRootSwipe: false)
-    /// ```
+    /// - parameter leftEdge:        Enable swipe from left edge. Defaults to `true`.
+    /// - parameter rightEdge:       Enable swipe from right edge. Defaults to `true`.
+    /// - parameter haptic:          Haptic feedback at threshold. Defaults to `true`.
+    /// - parameter exitOnRootSwipe: Double-swipe to exit on root screen. Defaults to `true`.
     public static func enable(
         leftEdge:        Bool = true,
         rightEdge:       Bool = true,
@@ -87,53 +71,28 @@ public class SwipeBackManager {
 
     /// Disables the swipe-back gesture for a specific view controller.
     ///
-    /// Use this on screens where the edge swipe would conflict with your UI —
-    /// for example, a drawing canvas, a map, or a carousel.
-    /// The gesture is automatically re-enabled when the view controller is deallocated.
-    ///
     /// - parameter viewController: The view controller on which to disable swipe-back.
-    ///
-    /// **Example:**
-    /// ```swift
-    /// override func viewDidLoad() {
-    ///     super.viewDidLoad()
-    ///     SwipeBackManager.disable(for: self)
-    /// }
-    /// ```
-    ///
-    /// **SwiftUI equivalent:**
-    /// ```swift
-    /// MyView()
-    ///     .swipeBackDisabled()
-    /// ```
     public static func disable(for viewController: UIViewController) {
         objc_setAssociatedObject(
-            viewController,
-            &SwipeBackConfig.kDisabled,
-            true,
-            .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            viewController, &SwipeBackConfig.kDisabled,
+            true, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
         )
     }
 
     /// Re-enables the swipe-back gesture for a specific view controller.
     ///
-    /// Only needed if you previously called `disable(for:)` and want to
-    /// re-enable the gesture dynamically (e.g. after a loading state completes).
-    ///
     /// - parameter viewController: The view controller on which to re-enable swipe-back.
     public static func enable(for viewController: UIViewController) {
         objc_setAssociatedObject(
-            viewController,
-            &SwipeBackConfig.kDisabled,
-            false,
-            .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            viewController, &SwipeBackConfig.kDisabled,
+            false, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
         )
     }
 
     /// Returns whether swipe-back is currently disabled for the given view controller.
     ///
     /// - parameter viewController: The view controller to check.
-    /// - returns: `true` if swipe-back has been disabled via `disable(for:)`, `false` otherwise.
+    /// - returns: `true` if disabled, `false` otherwise.
     public static func isDisabled(for viewController: UIViewController) -> Bool {
         return objc_getAssociatedObject(viewController, &SwipeBackConfig.kDisabled) as? Bool ?? false
     }
@@ -143,33 +102,16 @@ public class SwipeBackManager {
 
 #if canImport(SwiftUI)
 /// A SwiftUI `ViewModifier` that disables the SwipeBackKit edge gesture on the modified view.
-///
-/// Apply this modifier using the `.swipeBackDisabled()` convenience extension on `View`.
-///
-/// **Example:**
-/// ```swift
-/// struct DrawingCanvasView: View {
-///     var body: some View {
-///         Canvas { ... }
-///             .swipeBackDisabled()  // edge swipe would conflict with drawing
-///     }
-/// }
-/// ```
 @available(iOS 14.0, *)
 public struct SwipeBackDisabledModifier: ViewModifier {
-    /// Applies the modifier by injecting a hidden `UIViewController` that disables
-    /// the swipe gesture when it appears and re-enables it when it disappears.
     public func body(content: Content) -> some View {
-        content
-            .background(SwipeBackDisabledRepresentable())
+        content.background(SwipeBackDisabledRepresentable())
     }
 }
 
 @available(iOS 14.0, *)
 struct SwipeBackDisabledRepresentable: UIViewControllerRepresentable {
-    func makeUIViewController(context: Context) -> SwipeBackDisablerVC {
-        SwipeBackDisablerVC()
-    }
+    func makeUIViewController(context: Context) -> SwipeBackDisablerVC { SwipeBackDisablerVC() }
     func updateUIViewController(_ uiViewController: SwipeBackDisablerVC, context: Context) {}
 }
 
@@ -178,47 +120,22 @@ class SwipeBackDisablerVC: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         SwipeBackManager.disable(for: self)
-        // Also disable on parent if embedded
-        if let parent = parent {
-            SwipeBackManager.disable(for: parent)
-        }
+        if let parent = parent { SwipeBackManager.disable(for: parent) }
     }
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         SwipeBackManager.enable(for: self)
-        if let parent = parent {
-            SwipeBackManager.enable(for: parent)
-        }
+        if let parent = parent { SwipeBackManager.enable(for: parent) }
     }
 }
 
 @available(iOS 14.0, *)
 extension View {
     /// Disables the SwipeBackKit edge swipe gesture on this SwiftUI view.
-    ///
-    /// Use this on views where an edge swipe would conflict with your UI,
-    /// such as drawing canvases, maps, carousels, or custom gesture-heavy screens.
-    ///
-    /// - returns: A view with the SwipeBackKit gesture disabled.
-    ///
-    /// **Example:**
-    /// ```swift
-    /// MapView()
-    ///     .swipeBackDisabled()
-    /// ```
-    public func swipeBackDisabled() -> some View {
-        modifier(SwipeBackDisabledModifier())
-    }
+    public func swipeBackDisabled() -> some View { modifier(SwipeBackDisabledModifier()) }
 
-    /// Explicitly marks this SwiftUI view as swipe-back enabled.
-    ///
-    /// This is the default behavior — calling this method is a no-op and exists
-    /// only for documentation clarity in code that conditionally enables/disables.
-    ///
-    /// - returns: The unmodified view.
-    public func swipeBackEnabled() -> some View {
-        self
-    }
+    /// Explicitly marks this SwiftUI view as swipe-back enabled (no-op, for clarity).
+    public func swipeBackEnabled() -> some View { self }
 }
 #endif
 
@@ -230,7 +147,6 @@ private class SwipeBackConfig {
     static var haptic:          Bool = true
     static var exitOnRootSwipe: Bool = true
 
-    // Associated object keys
     static var kDisabled: UInt8 = 0
 
     static func swizzleNavController() {
@@ -248,8 +164,115 @@ private class SwipeBackConfig {
 
 // MARK: - Associated Object Keys
 
-private var kOverlay:   UInt8 = 0
-private var kExitTimer: UInt8 = 0
+private var kOverlay:      UInt8 = 0
+private var kExitTimer:    UInt8 = 0
+private var kInteraction:  UInt8 = 0
+private var kNavDelegate:  UInt8 = 0
+
+// MARK: - SwbInteractiveTransition
+
+/// Drives the real UIKit navigation transition interactively with finger movement.
+/// Slow drag → previous screen revealed live. Fast flick → instant finish.
+final class SwbInteractiveTransition: UIPercentDrivenInteractiveTransition {
+    /// Whether an interactive session is currently in progress.
+    var isInteracting = false
+
+    override var completionSpeed: CGFloat { return 0.85 }
+}
+
+// MARK: - SwbSlideTransition (Animated Transitioning)
+
+/// Custom slide transition with parallax effect.
+/// Previous VC slides in at 30% speed; current VC slides out at 100%.
+/// This is what UIPercentDrivenInteractiveTransition drives during the gesture.
+final class SwbSlideTransition: NSObject, UIViewControllerAnimatedTransitioning {
+
+    let isLeft: Bool   // gesture came from left edge → pop goes right
+
+    init(isLeft: Bool) { self.isLeft = isLeft }
+
+    func transitionDuration(using ctx: UIViewControllerContextTransitioning?) -> TimeInterval {
+        return 0.38
+    }
+
+    func animateTransition(using ctx: UIViewControllerContextTransitioning) {
+        guard
+            let fromVC = ctx.viewController(forKey: .from),
+            let toVC   = ctx.viewController(forKey: .to)
+        else { ctx.completeTransition(false); return }
+
+        let container  = ctx.containerView
+        let width      = container.bounds.width
+
+        // Direction: left-edge swipe → current slides RIGHT, previous comes from LEFT
+        let outX: CGFloat  = isLeft ?  width : -width   // current VC exits to
+        let inStartX: CGFloat = isLeft ? -width * 0.30 : width * 0.30  // previous VC starts at
+
+        // Insert previous VC behind current
+        container.insertSubview(toVC.view, belowSubview: fromVC.view)
+        toVC.view.frame = ctx.finalFrame(for: toVC)
+        toVC.view.transform = CGAffineTransform(translationX: inStartX, y: 0)
+
+        // Add a dim overlay on the previous VC (starts at 0.18, goes to 0)
+        let dimView = UIView(frame: toVC.view.bounds)
+        dimView.backgroundColor = UIColor.black.withAlphaComponent(0.18)
+        toVC.view.addSubview(dimView)
+
+        UIView.animate(
+            withDuration: transitionDuration(using: ctx),
+            delay: 0,
+            options: [.curveEaseOut]
+        ) {
+            fromVC.view.transform = CGAffineTransform(translationX: outX, y: 0)
+            toVC.view.transform   = .identity
+            dimView.alpha         = 0
+        } completion: { finished in
+            fromVC.view.transform = .identity
+            toVC.view.transform   = .identity
+            dimView.removeFromSuperview()
+            ctx.completeTransition(!ctx.transitionWasCancelled)
+        }
+    }
+}
+
+// MARK: - SwbNavDelegate
+
+/// UINavigationControllerDelegate that provides the custom animated + interactive transition.
+final class SwbNavDelegate: NSObject, UINavigationControllerDelegate {
+
+    weak var originalDelegate: UINavigationControllerDelegate?
+    var interactiveTransition: SwbInteractiveTransition?
+    var isLeft: Bool = true
+
+    func navigationController(
+        _ navigationController: UINavigationController,
+        animationControllerFor operation: UINavigationController.Operation,
+        from fromVC: UIViewController,
+        to toVC: UIViewController
+    ) -> UIViewControllerAnimatedTransitioning? {
+        // Only intercept pop operations triggered by our gesture
+        guard operation == .pop, interactiveTransition?.isInteracting == true else { return nil }
+        return SwbSlideTransition(isLeft: isLeft)
+    }
+
+    func navigationController(
+        _ navigationController: UINavigationController,
+        interactionControllerFor animationController: UIViewControllerAnimatedTransitioning
+    ) -> UIViewControllerInteractiveTransitioning? {
+        guard let it = interactiveTransition, it.isInteracting else { return nil }
+        return it
+    }
+
+    // Forward any other delegate calls to the original delegate
+    override func responds(to aSelector: Selector!) -> Bool {
+        return super.responds(to: aSelector) || (originalDelegate?.responds(to: aSelector) ?? false)
+    }
+
+    override func forwardingTarget(for aSelector: Selector!) -> Any? {
+        if originalDelegate?.responds(to: aSelector) == true { return originalDelegate }
+        return super.forwardingTarget(for: aSelector)
+    }
+}
 
 // MARK: - UINavigationController Extension (Push/Pop)
 
@@ -258,7 +281,15 @@ extension UINavigationController {
     @objc func swb_navViewDidLoad() {
         swb_navViewDidLoad()
         interactivePopGestureRecognizer?.isEnabled = false
-        if SwipeBackConfig.leftEdge  {
+
+        // Install our SwbNavDelegate, preserving any existing delegate
+        let swbDelegate = SwbNavDelegate()
+        swbDelegate.originalDelegate = self.delegate
+        self.delegate = swbDelegate
+        // Retain it via associated object (delegate is weak in UIKit)
+        objc_setAssociatedObject(self, &kNavDelegate, swbDelegate, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+
+        if SwipeBackConfig.leftEdge {
             let g = makeSwbEdgeGesture(.left, target: self, action: #selector(swb_navPan(_:)))
             view.addGestureRecognizer(g)
         }
@@ -269,74 +300,158 @@ extension UINavigationController {
     }
 
     @objc func swb_navPan(_ g: UIScreenEdgePanGestureRecognizer) {
-        // Don't fire if a sheet/modal is currently presented on top
         if presentedViewController != nil { return }
-        // Check if top VC has swipe disabled
         if let topVC = topViewController, SwipeBackManager.isDisabled(for: topVC) { return }
 
         if viewControllers.count > 1 {
-            handleSwbGesture(g, in: view) { [weak self] in
-                self?.popViewController(animated: true)
-            }
+            handleSwbNavGesture(g)
         } else if SwipeBackConfig.exitOnRootSwipe {
             handleRootSwipe(g)
+        }
+    }
+
+    /// Core handler for nav pop with interactive transition.
+    func handleSwbNavGesture(_ g: UIScreenEdgePanGestureRecognizer) {
+        let isLeft   = g.edges == .left
+        let trans    = g.translation(in: view)
+        let dragX    = max(0, isLeft ? trans.x : -trans.x)
+        let progress = min(1.0, dragX / view.bounds.width)
+        let loc      = g.location(in: view)
+
+        // Retrieve or create the SwbNavDelegate
+        guard let swbDelegate = objc_getAssociatedObject(self, &kNavDelegate) as? SwbNavDelegate else { return }
+
+        switch g.state {
+
+        case .began:
+            // Fast flick detection — if velocity is already high, skip interactive mode
+            let vel = g.velocity(in: view)
+            let isFastFlick = isLeft ? vel.x > 900 : vel.x < -900
+
+            if isFastFlick {
+                // Non-interactive instant pop with wave
+                let overlay = SwipeWaveOverlay(isLeft: isLeft)
+                overlay.frame = view.bounds
+                overlay.isUserInteractionEnabled = false
+                view.addSubview(overlay)
+                objc_setAssociatedObject(self, &kOverlay, overlay, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+                overlay.update(fingerY: loc.y, progress: 0.8)
+                if SwipeBackConfig.haptic { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
+                swb_dismissOverlay(springBack: false)
+                popViewController(animated: true)
+            } else {
+                // Interactive mode — start transition immediately
+                let it = SwbInteractiveTransition()
+                it.isInteracting = true
+                swbDelegate.interactiveTransition = it
+                swbDelegate.isLeft = isLeft
+                objc_setAssociatedObject(self, &kInteraction, it, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+
+                // Wave overlay
+                let overlay = SwipeWaveOverlay(isLeft: isLeft)
+                overlay.frame = view.bounds
+                overlay.isUserInteractionEnabled = false
+                // We add overlay AFTER popViewController so it sits on top of the transition
+                if SwipeBackConfig.haptic { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+
+                // This triggers the delegate → animationController + interactionController
+                popViewController(animated: true)
+
+                // Now add overlay on top
+                view.addSubview(overlay)
+                objc_setAssociatedObject(self, &kOverlay, overlay, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            }
+
+        case .changed:
+            guard let it = objc_getAssociatedObject(self, &kInteraction) as? SwbInteractiveTransition,
+                  it.isInteracting else { return }
+            it.update(progress)
+
+            if let overlay = objc_getAssociatedObject(self, &kOverlay) as? SwipeWaveOverlay {
+                overlay.update(fingerY: loc.y, progress: progress)
+                if progress >= 0.5 && !overlay.thresholdReached {
+                    overlay.thresholdReached = true
+                    if SwipeBackConfig.haptic { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
+                } else if progress < 0.5 {
+                    overlay.thresholdReached = false
+                }
+            }
+
+        case .ended:
+            guard let it = objc_getAssociatedObject(self, &kInteraction) as? SwbInteractiveTransition,
+                  it.isInteracting else { return }
+
+            let vel        = g.velocity(in: view)
+            let fastEnough = isLeft ? vel.x > 400 : vel.x < -400
+            let farEnough  = progress >= 0.45
+
+            it.isInteracting = false
+            swbDelegate.interactiveTransition = nil
+            objc_setAssociatedObject(self, &kInteraction, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+
+            if farEnough || fastEnough {
+                swb_dismissOverlay(springBack: false)
+                if SwipeBackConfig.haptic { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
+                it.finish()
+            } else {
+                swb_dismissOverlay(springBack: true)
+                it.cancel()
+            }
+
+        case .cancelled, .failed:
+            if let it = objc_getAssociatedObject(self, &kInteraction) as? SwbInteractiveTransition {
+                it.isInteracting = false
+                it.cancel()
+                objc_setAssociatedObject(self, &kInteraction, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            }
+            swbDelegate.interactiveTransition = nil
+            swb_dismissOverlay(springBack: true)
+
+        default: break
         }
     }
 
     /// Handles swipe on root screen — shows toast, exits on second swipe.
     private func handleRootSwipe(_ g: UIScreenEdgePanGestureRecognizer) {
         guard g.state == .ended else { return }
-
-        let isLeft = g.edges == .left
-        let trans  = g.translation(in: view)
-        let dragX  = max(0, isLeft ? trans.x : -trans.x)
-        let vel    = g.velocity(in: view)
+        let isLeft     = g.edges == .left
+        let trans      = g.translation(in: view)
+        let dragX      = max(0, isLeft ? trans.x : -trans.x)
+        let vel        = g.velocity(in: view)
         let fastEnough = isLeft ? vel.x > 500 : vel.x < -500
         guard dragX > 60 || fastEnough else { return }
 
-        let now = Date()
+        let now       = Date()
         let lastSwipe = objc_getAssociatedObject(self, &kExitTimer) as? Date
 
         if let last = lastSwipe, now.timeIntervalSince(last) < 2.0 {
-            // Second swipe within 2 seconds — move to background
             objc_setAssociatedObject(self, &kExitTimer, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
             if SwipeBackConfig.haptic { UIImpactFeedbackGenerator(style: .heavy).impactOccurred() }
             UIControl().sendAction(#selector(URLSessionTask.suspend), to: UIApplication.shared, for: nil)
         } else {
-            // First swipe — show toast
             objc_setAssociatedObject(self, &kExitTimer, now, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
             showExitToast(in: view)
             if SwipeBackConfig.haptic { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
         }
     }
 
-    /// Shows Android-style "Swipe again to exit" toast from top of screen.
     private func showExitToast(in hostView: UIView) {
         let toast = SwipeExitToast()
         toast.translatesAutoresizingMaskIntoConstraints = false
         hostView.addSubview(toast)
-
         NSLayoutConstraint.activate([
             toast.centerXAnchor.constraint(equalTo: hostView.centerXAnchor),
             toast.topAnchor.constraint(equalTo: hostView.safeAreaLayoutGuide.topAnchor, constant: 12),
             toast.widthAnchor.constraint(lessThanOrEqualTo: hostView.widthAnchor, multiplier: 0.85)
         ])
-
-        // Animate in from top
         toast.transform = CGAffineTransform(translationX: 0, y: -80)
         toast.alpha = 0
         UIView.animate(withDuration: 0.35, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 0.5) {
-            toast.transform = .identity
-            toast.alpha = 1
+            toast.transform = .identity; toast.alpha = 1
         }
-
-        // Auto dismiss after 2 seconds
         UIView.animate(withDuration: 0.3, delay: 2.0) {
-            toast.alpha = 0
-            toast.transform = CGAffineTransform(translationX: 0, y: -40)
-        } completion: { _ in
-            toast.removeFromSuperview()
-        }
+            toast.alpha = 0; toast.transform = CGAffineTransform(translationX: 0, y: -40)
+        } completion: { _ in toast.removeFromSuperview() }
     }
 }
 
@@ -346,10 +461,7 @@ extension UIViewController {
 
     @objc func swb_viewDidAppear(_ animated: Bool) {
         swb_viewDidAppear(animated)
-
-        // Skip if disabled for this VC
         guard !SwipeBackManager.isDisabled(for: self) else { return }
-
         guard presentingViewController != nil,
               !(self is UINavigationController),
               !(self is UITabBarController),
@@ -374,16 +486,15 @@ extension UIViewController {
 
     @objc func swb_dismissPan(_ g: UIScreenEdgePanGestureRecognizer) {
         guard !SwipeBackManager.isDisabled(for: self) else { return }
+        // Present/dismiss uses the simple overlay approach (no interactive transition for modals)
         handleSwbGesture(g, in: view) { [weak self] in
             self?.dismiss(animated: true)
         }
     }
 }
 
-// MARK: - Shared Gesture Handler
+// MARK: - Shared Gesture Helpers
 
-/// Creates a configured `UIScreenEdgePanGestureRecognizer` with delegate support
-/// for resolving conflicts with `UIScrollView` and other gesture recognizers.
 private func makeSwbEdgeGesture(_ edge: UIRectEdge, target: AnyObject, action: Selector) -> UIScreenEdgePanGestureRecognizer {
     let g = SwbEdgeGestureRecognizer(target: target, action: action)
     g.edges = edge
@@ -391,13 +502,7 @@ private func makeSwbEdgeGesture(_ edge: UIRectEdge, target: AnyObject, action: S
     return g
 }
 
-private func addSwbEdge(_ edge: UIRectEdge, target: AnyObject, action: Selector) {
-    let g = makeSwbEdgeGesture(edge, target: target, action: action)
-    if let vc = target as? UIViewController { vc.view.addGestureRecognizer(g) }
-}
-
-/// Custom subclass of UIScreenEdgePanGestureRecognizer that resolves conflicts
-/// with UIScrollView and other pan gestures.
+/// Custom UIScreenEdgePanGestureRecognizer that resolves conflicts with UIScrollView.
 private class SwbEdgeGestureRecognizer: UIScreenEdgePanGestureRecognizer, UIGestureRecognizerDelegate {
 
     override init(target: Any?, action: Selector?) {
@@ -405,24 +510,17 @@ private class SwbEdgeGestureRecognizer: UIScreenEdgePanGestureRecognizer, UIGest
         delegate = self
     }
 
-    /// Allow simultaneous recognition with scroll views.
-    /// The edge gesture will win because UIScreenEdgePanGestureRecognizer
-    /// has higher priority at the screen edge.
     func gestureRecognizer(
         _ gestureRecognizer: UIGestureRecognizer,
         shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
     ) -> Bool {
-        // Allow with scroll views — edge gesture takes priority at the edge
         return other is UIPanGestureRecognizer
     }
 
-    /// Require scroll views to fail before our gesture begins,
-    /// but only when the scroll view is at its leftmost/rightmost position.
     func gestureRecognizer(
         _ gestureRecognizer: UIGestureRecognizer,
         shouldBeRequiredToFailBy other: UIGestureRecognizer
     ) -> Bool {
-        // If the other gesture is a scroll view's pan, check if scroll is at edge
         if let pan = other as? UIPanGestureRecognizer,
            let scrollView = pan.view as? UIScrollView {
             let isLeftEdge = edges == .left
@@ -437,6 +535,7 @@ private class SwbEdgeGestureRecognizer: UIScreenEdgePanGestureRecognizer, UIGest
 
 extension UIViewController {
 
+    /// Simple overlay-based gesture handler (used for present/dismiss).
     func handleSwbGesture(
         _ g: UIScreenEdgePanGestureRecognizer,
         in hostView: UIView,
@@ -449,7 +548,6 @@ extension UIViewController {
         let progress = min(1.0, dragX / 130.0)
 
         switch g.state {
-
         case .began:
             let overlay = SwipeWaveOverlay(isLeft: isLeft)
             overlay.frame = hostView.bounds
@@ -472,14 +570,11 @@ extension UIViewController {
             let vel        = g.velocity(in: hostView)
             let fastEnough = isLeft ? vel.x > 500 : vel.x < -500
             let farEnough  = progress >= 0.5
-
             if farEnough || fastEnough {
-                // Complete — dismiss overlay then navigate
                 swb_dismissOverlay(springBack: false)
                 if SwipeBackConfig.haptic { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
                 onComplete()
             } else {
-                // Cancelled — spring back animation
                 swb_dismissOverlay(springBack: true)
             }
 
@@ -490,25 +585,17 @@ extension UIViewController {
         }
     }
 
-    /// Dismisses the wave overlay.
-    /// - Parameter springBack: If true, animates the wave springing back to the edge before fading.
-    private func swb_dismissOverlay(springBack: Bool) {
+    func swb_dismissOverlay(springBack: Bool) {
         guard let overlay = objc_getAssociatedObject(self, &kOverlay) as? SwipeWaveOverlay else { return }
-
         if springBack {
-            // Spring back: wave contracts back to edge, then fades
             UIView.animate(
-                withDuration: 0.4,
-                delay: 0,
-                usingSpringWithDamping: 0.6,
-                initialSpringVelocity: 0.8,
+                withDuration: 0.4, delay: 0,
+                usingSpringWithDamping: 0.6, initialSpringVelocity: 0.8,
                 options: [.curveEaseOut]
             ) {
                 overlay.springBack()
             } completion: { _ in
-                UIView.animate(withDuration: 0.15) {
-                    overlay.alpha = 0
-                } completion: { _ in
+                UIView.animate(withDuration: 0.15) { overlay.alpha = 0 } completion: { _ in
                     overlay.removeFromSuperview()
                 }
             }
@@ -517,45 +604,19 @@ extension UIViewController {
                 overlay.removeFromSuperview()
             }
         }
-
         objc_setAssociatedObject(self, &kOverlay, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
     }
 }
 
 // MARK: - SwipeWaveOverlay
 
-/// A full-screen transparent overlay that renders the Android-style back gesture indicator.
-///
-/// This view is added to the host view when a swipe gesture begins and removed when it ends.
-/// It draws two visual elements:
-///
-/// 1. **Wave shape** — a smooth cubic bezier curve anchored to the screen edge.
-///    Both endpoints sit on the edge (x=0 or x=screenWidth), so the wave merges
-///    flush with the screen — no visible seam. The wave bulges inward as the user drags.
-///
-/// 2. **Chevron arrow** — a `‹` or `›` symbol that fades in after 20% drag and
-///    grows slightly as the user continues. The arrow is always positioned inside
-///    the wave bulge area.
-///
-/// When the gesture is cancelled, `springBack()` animates the wave back to the edge
-/// before the view fades out, giving a satisfying elastic feel.
+/// Full-screen transparent overlay that renders the Android-style back gesture indicator.
 class SwipeWaveOverlay: UIView {
 
-    /// Whether the gesture is from the left edge (`true`) or right edge (`false`).
     private let isLeft: Bool
-
-    /// The current Y position of the user's finger. The wave follows this vertically.
     private var fingerY: CGFloat = 0
-
-    /// Drag progress from `0.0` (no drag) to `1.0` (full threshold reached).
-    /// Drives wave size, arrow opacity, and arrow size.
     private var progress: CGFloat = 0
-
-    /// Set to `true` when the user has dragged past the 50% threshold.
-    /// Triggers a haptic feedback pulse and is used to track state changes.
     var thresholdReached = false
-
-    /// The CAShapeLayer that renders the chevron arrow (`‹` or `›`).
     private let chevronLayer = CAShapeLayer()
 
     init(isLeft: Bool) {
@@ -573,13 +634,6 @@ class SwipeWaveOverlay: UIView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    /// Updates the overlay with the current finger position and drag progress.
-    ///
-    /// Called on every `.changed` event from the gesture recognizer.
-    /// Triggers a redraw of the wave shape and updates the chevron arrow.
-    ///
-    /// - parameter fingerY:  The current Y position of the user's finger in the host view's coordinate space.
-    /// - parameter progress: The drag progress from `0.0` (no drag) to `1.0` (full threshold).
     func update(fingerY: CGFloat, progress: CGFloat) {
         self.fingerY  = fingerY
         self.progress = progress
@@ -587,10 +641,6 @@ class SwipeWaveOverlay: UIView {
         updateChevron()
     }
 
-    /// Resets the wave to zero progress, creating a spring-back visual effect.
-    ///
-    /// Called when the gesture is cancelled or the user releases without reaching the threshold.
-    /// Should be called inside a `UIView.animate` block for the spring animation.
     func springBack() {
         progress = 0
         setNeedsDisplay()
@@ -603,7 +653,7 @@ class SwipeWaveOverlay: UIView {
     }
 
     private func updateChevron() {
-        let p = progress
+        let p     = progress
         let alpha = max(0, (p - 0.2) / 0.35)
         chevronLayer.opacity = Float(min(1, alpha))
         guard alpha > 0 else { return }
@@ -623,9 +673,9 @@ class SwipeWaveOverlay: UIView {
             path.addLine(to: CGPoint(x: cx - s * 0.45, y: cy))
             path.addLine(to: CGPoint(x: cx + s * 0.35, y: cy + s))
         }
-        chevronLayer.path  = path.cgPath
-        chevronLayer.frame = bounds
-        let white: CGFloat = 0.45 + min(0.55, p * 1.1)
+        chevronLayer.path        = path.cgPath
+        chevronLayer.frame       = bounds
+        let white: CGFloat       = 0.45 + min(0.55, p * 1.1)
         chevronLayer.strokeColor = UIColor(white: white, alpha: 1).cgColor
     }
 
@@ -661,37 +711,22 @@ class SwipeWaveOverlay: UIView {
 
 // MARK: - SwipeExitToast
 
-/// An Android-style toast notification that slides in from the top of the screen.
-///
-/// Displayed when the user swipes on the root (first) view controller, informing them
-/// that a second swipe within 2 seconds will move the app to the background.
-///
-/// The toast uses a frosted glass (`UIBlurEffect`) background and auto-dismisses
-/// after 2 seconds with a slide-up fade animation.
-///
-/// This view is created and managed internally by `SwipeBackKit`.
-/// You do not need to instantiate it directly.
+/// Android-style "Swipe again to exit" toast that slides in from the top.
 class SwipeExitToast: UIView {
 
-    init() {
-        super.init(frame: .zero)
-        setup()
-    }
-
+    init() { super.init(frame: .zero); setup() }
     required init?(coder: NSCoder) { fatalError() }
 
     private func setup() {
-        // Frosted glass background
         let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterialDark))
         blur.translatesAutoresizingMaskIntoConstraints = false
         blur.layer.cornerRadius = 22
         blur.clipsToBounds = true
         addSubview(blur)
 
-        // Label
         let label = UILabel()
-        label.text = "Swipe again to exit"
-        label.font = .systemFont(ofSize: 14, weight: .medium)
+        label.text      = "Swipe again to exit"
+        label.font      = .systemFont(ofSize: 14, weight: .medium)
         label.textColor = .white
         label.translatesAutoresizingMaskIntoConstraints = false
         blur.contentView.addSubview(label)
@@ -711,25 +746,17 @@ class SwipeExitToast: UIView {
 
 // MARK: - SwipeBackNavigationController
 
-/// An optional `UINavigationController` subclass that provides SwipeBackKit support.
+/// Optional `UINavigationController` subclass for explicit opt-in.
 ///
-/// Use this subclass if you prefer explicit opt-in over the global swizzle approach,
-/// or if you only want swipe-back on specific navigation controllers in your app.
+/// For app-wide support, prefer `SwipeBackManager.enable()` in AppDelegate.
 ///
-/// For app-wide support, prefer `SwipeBackManager.enable()` in your AppDelegate instead.
-///
-/// **Usage — programmatic:**
+/// **Usage:**
 /// ```swift
 /// let nav = SwipeBackNavigationController(rootViewController: homeVC)
-/// window?.rootViewController = nav
 /// ```
-///
-/// **Usage — Storyboard:**
-/// Select your `UINavigationController` → Identity Inspector → Custom Class → `SwipeBackNavigationController`
 public class SwipeBackNavigationController: UINavigationController {
     public override func viewDidLoad() {
         super.viewDidLoad()
-        // Gesture setup is handled automatically by swb_navViewDidLoad via method swizzling.
-        // No additional configuration needed here.
+        // Gesture setup handled automatically via swb_navViewDidLoad swizzle.
     }
 }

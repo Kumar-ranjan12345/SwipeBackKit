@@ -1,29 +1,48 @@
 # SwipeBackKit
 
-Android-style edge swipe navigation for iOS — both edges, elastic wave animation, works for push and present.
+Android-style edge swipe navigation for iOS — predictive back, both edges, elastic wave animation, works for push and present.
 
-> This feature is not available in any existing iOS library. SloppySwiper only handles left-edge pop with no visual feedback. SwipeBackKit adds right-edge support, present/dismiss handling, and the Android elastic wave indicator.
+> Most iOS swipe libraries fake an animation overlay and then suddenly pop. SwipeBackKit drives the real UIKit navigation transition with your finger — previous screen appears live as you drag, just like Android 14 and native iOS interactive pop.
 
 ## Features
 
+- **Predictive back** — slow drag reveals previous screen live (interactive transition)
+- **Fast flick** — instant pop, same as before
+- **Parallax slide** — previous VC slides in at 30% speed, current slides out at 100%
 - **Both edges** — left AND right edge swipe (Android 10+ style)
 - **Push & Present** — works for `popViewController` AND `dismiss`
 - **Android wave** — elastic bezier wave anchored to screen edge
 - **Arrow indicator** — chevron grows inside the wave as you drag
 - **Haptic feedback** — at gesture start and completion threshold
+- **Scroll view safe** — no conflict with `UIScrollView`, `UITableView`, `UICollectionView`
 - **Zero config** — one line in AppDelegate, no subclassing
+
+## What's New in v1.3.0
+
+### Predictive Back (Interactive Transition)
+
+The biggest upgrade yet. SwipeBackKit now drives the **real UIKit navigation transition** with your finger:
+
+| Gesture | Behavior |
+|---|---|
+| Slow drag | Previous screen gradually revealed — peek before committing |
+| Release past 45% | Transition completes naturally |
+| Release before 45% | Springs back smoothly |
+| Fast flick | Instant pop (same as before) |
+
+This uses `UIPercentDrivenInteractiveTransition` + `UINavigationControllerDelegate` under the hood — the same mechanism iOS uses for its native interactive pop. No fake overlays.
 
 ## What's New in v1.2.0
 
-- **Scroll view conflict fixed** — swipe-back now works correctly on screens with `UIScrollView`, `UITableView`, or `UICollectionView`. The edge gesture wins when the scroll view is at its leftmost/rightmost position.
-- **Half-screen present fixed** — swipe-back on the background view controller is now blocked when a sheet or modal is presented on top, preventing accidental navigation.
+- **Scroll view conflict fixed** — edge gesture wins when scroll view is at its leftmost/rightmost position
+- **Half-screen present fixed** — swipe-back on background VC blocked when a sheet is presented on top
 
+## What's New in v1.1.0
 
-
-- **Disable per-screen** — `SwipeBackManager.disable(for: self)` in any ViewController
+- **Disable per-screen** — `SwipeBackManager.disable(for: self)`
 - **SwiftUI support** — `.swipeBackDisabled()` modifier
 - **Spring-back animation** — wave bounces back to edge when gesture is cancelled
-- **Double-swipe to exit** — swipe on root screen shows "Swipe again to exit" toast; second swipe moves app to background
+- **Double-swipe to exit** — swipe on root screen shows "Swipe again to exit" toast
 
 ## Installation
 
@@ -51,15 +70,16 @@ func application(_ application: UIApplication,
 }
 ```
 
-That's it. Every navigation controller and presented view controller in your app gets swipe-back automatically.
+That's it. Every navigation controller and presented view controller in your app gets predictive swipe-back automatically.
 
 ### Customization
 
 ```swift
 SwipeBackManager.enable(
-    leftEdge:  true,   // left edge → back (default: true)
-    rightEdge: true,   // right edge → back (default: true)
-    haptic:    true    // haptic feedback (default: true)
+    leftEdge:        true,   // left edge → back (default: true)
+    rightEdge:       true,   // right edge → back (default: true)
+    haptic:          true,   // haptic feedback (default: true)
+    exitOnRootSwipe: true    // double-swipe to exit (default: true)
 )
 
 // Disable on a specific screen
@@ -71,9 +91,6 @@ override func viewDidLoad() {
 // SwiftUI
 MyView()
     .swipeBackDisabled()
-
-// Disable exit-on-root behavior
-SwipeBackManager.enable(exitOnRootSwipe: false)
 ```
 
 ### Optional: Subclass
@@ -84,10 +101,21 @@ let nav = SwipeBackNavigationController(rootViewController: homeVC)
 
 ## How it works
 
-- Swizzles `UINavigationController.viewDidLoad` to add edge gestures for push/pop
-- Swizzles `UIViewController.viewDidAppear` to add edge gestures for present/dismiss
-- Wave overlay uses a cubic bezier curve anchored to the screen edge
-- Pop/dismiss only triggers on finger lift (not during drag) — exactly like Android
+**v1.3.0 interactive transition:**
+1. On `.began` — creates `SwbInteractiveTransition` (UIPercentDrivenInteractiveTransition), calls `popViewController(animated: true)` immediately
+2. `SwbNavDelegate` (UINavigationControllerDelegate) provides `SwbSlideTransition` as the animation controller and the interaction controller
+3. On `.changed` — calls `interactiveTransition.update(progress)` — this drives the actual VC transition live with the finger
+4. On `.ended` — calls `finish()` or `cancel()` based on distance + velocity threshold
+5. Wave overlay plays on top of the real transition throughout
+
+**Slide transition:**
+- Current VC slides out at 100% speed
+- Previous VC slides in at 30% speed (parallax)
+- Dim overlay on previous VC fades out as transition progresses
+
+**Scroll view conflict:**
+- `SwbEdgeGestureRecognizer` checks scroll view content offset
+- Edge gesture only wins when scroll view is at its leftmost/rightmost position
 
 ## Requirements
 
