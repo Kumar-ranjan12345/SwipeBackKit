@@ -258,21 +258,27 @@ extension UINavigationController {
     @objc func swb_navViewDidLoad() {
         swb_navViewDidLoad()
         interactivePopGestureRecognizer?.isEnabled = false
-        if SwipeBackConfig.leftEdge  { addSwbEdge(.left,  target: self, action: #selector(swb_navPan(_:))) }
-        if SwipeBackConfig.rightEdge { addSwbEdge(.right, target: self, action: #selector(swb_navPan(_:))) }
+        if SwipeBackConfig.leftEdge  {
+            let g = makeSwbEdgeGesture(.left, target: self, action: #selector(swb_navPan(_:)))
+            view.addGestureRecognizer(g)
+        }
+        if SwipeBackConfig.rightEdge {
+            let g = makeSwbEdgeGesture(.right, target: self, action: #selector(swb_navPan(_:)))
+            view.addGestureRecognizer(g)
+        }
     }
 
     @objc func swb_navPan(_ g: UIScreenEdgePanGestureRecognizer) {
+        // Don't fire if a sheet/modal is currently presented on top
+        if presentedViewController != nil { return }
         // Check if top VC has swipe disabled
         if let topVC = topViewController, SwipeBackManager.isDisabled(for: topVC) { return }
 
         if viewControllers.count > 1 {
-            // Normal pop
             handleSwbGesture(g, in: view) { [weak self] in
                 self?.popViewController(animated: true)
             }
         } else if SwipeBackConfig.exitOnRootSwipe {
-            // Root screen — handle exit gesture
             handleRootSwipe(g)
         }
     }
@@ -355,15 +361,13 @@ extension UIViewController {
             .forEach { view.removeGestureRecognizer($0) }
 
         if SwipeBackConfig.leftEdge {
-            let g = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(swb_dismissPan(_:)))
-            g.edges = .left
-            g.name  = "swb_dismiss"
+            let g = makeSwbEdgeGesture(.left, target: self, action: #selector(swb_dismissPan(_:)))
+            g.name = "swb_dismiss"
             view.addGestureRecognizer(g)
         }
         if SwipeBackConfig.rightEdge {
-            let g = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(swb_dismissPan(_:)))
-            g.edges = .right
-            g.name  = "swb_dismiss"
+            let g = makeSwbEdgeGesture(.right, target: self, action: #selector(swb_dismissPan(_:)))
+            g.name = "swb_dismiss"
             view.addGestureRecognizer(g)
         }
     }
@@ -378,11 +382,57 @@ extension UIViewController {
 
 // MARK: - Shared Gesture Handler
 
-private func addSwbEdge(_ edge: UIRectEdge, target: AnyObject, action: Selector) {
-    let g = UIScreenEdgePanGestureRecognizer(target: target, action: action)
+/// Creates a configured `UIScreenEdgePanGestureRecognizer` with delegate support
+/// for resolving conflicts with `UIScrollView` and other gesture recognizers.
+private func makeSwbEdgeGesture(_ edge: UIRectEdge, target: AnyObject, action: Selector) -> UIScreenEdgePanGestureRecognizer {
+    let g = SwbEdgeGestureRecognizer(target: target, action: action)
     g.edges = edge
     g.name  = "swb_edge"
+    return g
+}
+
+private func addSwbEdge(_ edge: UIRectEdge, target: AnyObject, action: Selector) {
+    let g = makeSwbEdgeGesture(edge, target: target, action: action)
     if let vc = target as? UIViewController { vc.view.addGestureRecognizer(g) }
+}
+
+/// Custom subclass of UIScreenEdgePanGestureRecognizer that resolves conflicts
+/// with UIScrollView and other pan gestures.
+private class SwbEdgeGestureRecognizer: UIScreenEdgePanGestureRecognizer, UIGestureRecognizerDelegate {
+
+    override init(target: Any?, action: Selector?) {
+        super.init(target: target, action: action)
+        delegate = self
+    }
+
+    /// Allow simultaneous recognition with scroll views.
+    /// The edge gesture will win because UIScreenEdgePanGestureRecognizer
+    /// has higher priority at the screen edge.
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
+    ) -> Bool {
+        // Allow with scroll views — edge gesture takes priority at the edge
+        return other is UIPanGestureRecognizer
+    }
+
+    /// Require scroll views to fail before our gesture begins,
+    /// but only when the scroll view is at its leftmost/rightmost position.
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldBeRequiredToFailBy other: UIGestureRecognizer
+    ) -> Bool {
+        // If the other gesture is a scroll view's pan, check if scroll is at edge
+        if let pan = other as? UIPanGestureRecognizer,
+           let scrollView = pan.view as? UIScrollView {
+            let isLeftEdge = edges == .left
+            let atEdge = isLeftEdge
+                ? scrollView.contentOffset.x <= 0
+                : scrollView.contentOffset.x >= scrollView.contentSize.width - scrollView.bounds.width
+            return atEdge
+        }
+        return false
+    }
 }
 
 extension UIViewController {
