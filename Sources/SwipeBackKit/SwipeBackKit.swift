@@ -233,14 +233,49 @@ private class SwipeBackConfig {
     // Associated object keys
     static var kDisabled: UInt8 = 0
 
-    static func swizzleNavController() {
-        // Swizzle on UINavigationController only — not subclasses or SwiftUI hosting controllers
-        let orig = class_getInstanceMethod(UINavigationController.self, #selector(UINavigationController.viewDidLoad))
-        let swiz = class_getInstanceMethod(UINavigationController.self, #selector(UINavigationController.swb_navViewDidLoad))
-        if let o = orig, let s = swiz { method_exchangeImplementations(o, s) }
+    // Thread-safe one-time swizzle tokens.
+    // Mutable booleans are not safe across threads — use static let with a closure instead.
+    private static let _navSwizzleOnce: Void = { swizzleNavControllerImpl() }()
+    private static let _vcSwizzleOnce:  Void = { swizzleViewControllerImpl() }()
+
+    static func swizzleNavController()  { _ = _navSwizzleOnce }
+    static func swizzleViewController() { _ = _vcSwizzleOnce }
+
+    private static func swizzleNavControllerImpl() {
+        // Apple-style safe swizzle pattern.
+        // Using class_addMethod avoids unsafe inherited IMP replacement behavior
+        // that can occur with direct method_exchangeImplementations on
+        // runtime-generated SwiftUI navigation controller subclasses.
+        // Note: subclasses still inherit the swizzled IMP through normal ObjC dispatch,
+        // but this pattern correctly preserves the original IMP in the method chain.
+        let cls  = UINavigationController.self
+        let orig = #selector(UINavigationController.viewDidLoad)
+        let swiz = #selector(UINavigationController.swb_navViewDidLoad)
+
+        guard
+            let origMethod = class_getInstanceMethod(cls, orig),
+            let swizMethod = class_getInstanceMethod(cls, swiz)
+        else { return }
+
+        let didAdd = class_addMethod(
+            cls,
+            orig,
+            method_getImplementation(swizMethod),
+            method_getTypeEncoding(swizMethod)
+        )
+        if didAdd {
+            class_replaceMethod(
+                cls,
+                swiz,
+                method_getImplementation(origMethod),
+                method_getTypeEncoding(origMethod)
+            )
+        } else {
+            method_exchangeImplementations(origMethod, swizMethod)
+        }
     }
 
-    static func swizzleViewController() {
+    private static func swizzleViewControllerImpl() {
         let orig = class_getInstanceMethod(UIViewController.self, #selector(UIViewController.viewDidAppear(_:)))
         let swiz = class_getInstanceMethod(UIViewController.self, #selector(UIViewController.swb_viewDidAppear(_:)))
         if let o = orig, let s = swiz { method_exchangeImplementations(o, s) }
@@ -258,20 +293,23 @@ extension UINavigationController {
 
     @objc func swb_navViewDidLoad() {
         swb_navViewDidLoad()
-        // SwiftUI's UIHostingController subclasses UINavigationController internally.
-        // We must only install gestures on real UINavigationController instances,
-        // not SwiftUI's internal hosting controllers — they don't have swb_navPan registered.
-        let className = NSStringFromClass(type(of: self))
-        guard className == "UINavigationController" ||
-              (!className.contains("SwiftUI") && !className.contains("Hosting"))
-        else { return }
-        interactivePopGestureRecognizer?.isEnabled = false
-        if SwipeBackConfig.leftEdge  {
+        // Nil out the delegate instead of disabling entirely.
+        // isEnabled = false breaks SwiftUI NavigationStack transitions and nested containers.
+        // Nilling the delegate prevents iOS's built-in left-edge pop from conflicting
+        // with our gesture, while keeping the recognizer itself non-destructively intact.
+        interactivePopGestureRecognizer?.delegate = nil
+        // Issue 1 fix: guard against duplicate gesture registration.
+        // viewDidLoad can be called multiple times on recreated nav controllers.
+        let hasLeft  = view.gestureRecognizers?.contains(where: { $0.name == "swb_left_edge"  }) ?? false
+        let hasRight = view.gestureRecognizers?.contains(where: { $0.name == "swb_right_edge" }) ?? false
+        if SwipeBackConfig.leftEdge && !hasLeft {
             let g = makeSwbEdgeGesture(.left, target: self, action: #selector(swb_navPan(_:)))
+            g.name = "swb_left_edge"
             view.addGestureRecognizer(g)
         }
-        if SwipeBackConfig.rightEdge {
+        if SwipeBackConfig.rightEdge && !hasRight {
             let g = makeSwbEdgeGesture(.right, target: self, action: #selector(swb_navPan(_:)))
+            g.name = "swb_right_edge"
             view.addGestureRecognizer(g)
         }
     }
@@ -361,7 +399,10 @@ extension UIViewController {
         guard presentingViewController != nil,
               !(self is UINavigationController),
               !(self is UITabBarController),
-              navigationController == nil
+              navigationController == nil,
+              // Issue 2 fix: exclude SwiftUI hosting controllers which are sometimes
+              // temporarily embedded and have unpredictable presentingViewController state.
+              !NSStringFromClass(type(of: self)).contains("Hosting")
         else { return }
 
         view.gestureRecognizers?
