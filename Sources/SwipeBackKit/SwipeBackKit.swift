@@ -234,6 +234,7 @@ private class SwipeBackConfig {
     static var kDisabled: UInt8 = 0
 
     static func swizzleNavController() {
+        // Swizzle on UINavigationController only — not subclasses or SwiftUI hosting controllers
         let orig = class_getInstanceMethod(UINavigationController.self, #selector(UINavigationController.viewDidLoad))
         let swiz = class_getInstanceMethod(UINavigationController.self, #selector(UINavigationController.swb_navViewDidLoad))
         if let o = orig, let s = swiz { method_exchangeImplementations(o, s) }
@@ -257,9 +258,13 @@ extension UINavigationController {
 
     @objc func swb_navViewDidLoad() {
         swb_navViewDidLoad()
-        // Guard: SwiftUI's UIHostingController can receive this swizzled call
-        // even though it's not a real UINavigationController. Bail out safely.
-        guard self is UINavigationController else { return }
+        // SwiftUI's UIHostingController subclasses UINavigationController internally.
+        // We must only install gestures on real UINavigationController instances,
+        // not SwiftUI's internal hosting controllers — they don't have swb_navPan registered.
+        let className = NSStringFromClass(type(of: self))
+        guard className == "UINavigationController" ||
+              (!className.contains("SwiftUI") && !className.contains("Hosting"))
+        else { return }
         interactivePopGestureRecognizer?.isEnabled = false
         if SwipeBackConfig.leftEdge  {
             let g = makeSwbEdgeGesture(.left, target: self, action: #selector(swb_navPan(_:)))
