@@ -177,7 +177,10 @@ final class SwbInteractiveTransition: UIPercentDrivenInteractiveTransition {
     /// Whether an interactive session is currently in progress.
     var isInteracting = false
 
-    override var completionSpeed: CGFloat { return 0.85 }
+    override init() {
+        super.init()
+        completionSpeed = 0.85
+    }
 }
 
 // MARK: - SwbSlideTransition (Animated Transitioning)
