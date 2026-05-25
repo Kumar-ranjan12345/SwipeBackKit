@@ -257,6 +257,9 @@ extension UINavigationController {
 
     @objc func swb_navViewDidLoad() {
         swb_navViewDidLoad()
+        // Guard: SwiftUI's UIHostingController can receive this swizzled call
+        // even though it's not a real UINavigationController. Bail out safely.
+        guard self is UINavigationController else { return }
         interactivePopGestureRecognizer?.isEnabled = false
         if SwipeBackConfig.leftEdge  {
             let g = makeSwbEdgeGesture(.left, target: self, action: #selector(swb_navPan(_:)))
