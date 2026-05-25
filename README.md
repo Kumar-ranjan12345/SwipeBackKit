@@ -6,9 +6,6 @@ Android-style edge swipe navigation for iOS — predictive back, both edges, ela
 
 ## Features
 
-- **Predictive back** — slow drag reveals previous screen live (interactive transition)
-- **Fast flick** — instant pop, same as before
-- **Parallax slide** — previous VC slides in at 30% speed, current slides out at 100%
 - **Both edges** — left AND right edge swipe (Android 10+ style)
 - **Push & Present** — works for `popViewController` AND `dismiss`
 - **Android wave** — elastic bezier wave anchored to screen edge
@@ -17,20 +14,9 @@ Android-style edge swipe navigation for iOS — predictive back, both edges, ela
 - **Scroll view safe** — no conflict with `UIScrollView`, `UITableView`, `UICollectionView`
 - **Zero config** — one line in AppDelegate, no subclassing
 
-## What's New in v1.3.0
+## What's New in v1.3.1
 
-### Predictive Back (Interactive Transition)
-
-The biggest upgrade yet. SwipeBackKit now drives the **real UIKit navigation transition** with your finger:
-
-| Gesture | Behavior |
-|---|---|
-| Slow drag | Previous screen gradually revealed — peek before committing |
-| Release past 45% | Transition completes naturally |
-| Release before 45% | Springs back smoothly |
-| Fast flick | Instant pop (same as before) |
-
-This uses `UIPercentDrivenInteractiveTransition` + `UINavigationControllerDelegate` under the hood — the same mechanism iOS uses for its native interactive pop. No fake overlays.
+Stable release. Same reliable 1.2.2 code base — no regressions.
 
 ## What's New in v1.2.0
 
