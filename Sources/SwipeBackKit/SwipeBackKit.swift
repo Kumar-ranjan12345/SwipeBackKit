@@ -390,11 +390,15 @@ extension UINavigationController {
         if let topVC = topViewController, SwipeBackManager.isDisabled(for: topVC) { return }
 
         if viewControllers.count > 1 {
+            // Normal pop — show wave and pop on complete
             handleSwbGesture(g, in: view) { [weak self] in
                 self?.popViewController(animated: true)
             }
         } else if SwipeBackConfig.exitOnRootSwipe {
-            handleRootSwipe(g)
+            // Root screen — show wave and trigger exit logic on complete
+            handleSwbGesture(g, in: view) { [weak self] in
+                self?.triggerExitBehavior()
+            }
         }
     }
 
@@ -416,27 +420,20 @@ extension UINavigationController {
         }
     }
 
-    /// Handles swipe on root screen — shows toast, exits on second swipe.
-    private func handleRootSwipe(_ g: UIScreenEdgePanGestureRecognizer) {
-        guard g.state == .ended else { return }
-
-        let isLeft = g.edges == .left
-        let trans  = g.translation(in: view)
-        let dragX  = max(0, isLeft ? trans.x : -trans.x)
-        let vel    = g.velocity(in: view)
-        let fastEnough = isLeft ? vel.x > 500 : vel.x < -500
-        guard dragX > 60 || fastEnough else { return }
-
+    /// Called after a completed swipe on the root screen.
+    /// First call: shows "Swipe again to exit" toast.
+    /// Second call within 2 seconds: moves app to background.
+    private func triggerExitBehavior() {
         let now = Date()
         let lastSwipe = objc_getAssociatedObject(self, &kExitTimer) as? Date
 
         if let last = lastSwipe, now.timeIntervalSince(last) < 2.0 {
-            // Second swipe within 2 seconds — move to background
+            // Second swipe — move to background
             objc_setAssociatedObject(self, &kExitTimer, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
             if SwipeBackConfig.haptic { UIImpactFeedbackGenerator(style: .heavy).impactOccurred() }
             UIControl().sendAction(#selector(URLSessionTask.suspend), to: UIApplication.shared, for: nil)
         } else {
-            // First swipe — show toast
+            // First swipe — show toast and record time
             objc_setAssociatedObject(self, &kExitTimer, now, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
             showExitToast(in: view)
             if SwipeBackConfig.haptic { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
