@@ -402,10 +402,7 @@ extension UINavigationController {
         }
     }
 
-    /// Handles RIGHT edge swipe — pop only, never root-exit.
-    /// Right edge mirrors Android 10+ behavior: go back. It never triggers
-    /// the "swipe again to exit" toast because swiping right on root is
-    /// a natural accidental gesture on iOS (edge of screen near home indicator).
+    /// Handles RIGHT edge swipe — pop or root-exit (same as left, no conflict with iOS default).
     @objc func swb_navPanRight(_ g: UIScreenEdgePanGestureRecognizer) {
         // Don't fire if a sheet/modal is currently presented on top
         if presentedViewController != nil { return }
@@ -413,10 +410,17 @@ extension UINavigationController {
         if SwipeBackOverlayRegistry.hasActiveOverlay { return }
         // Check if top VC has swipe disabled
         if let topVC = topViewController, SwipeBackManager.isDisabled(for: topVC) { return }
-        // Right edge only pops — never shows exit toast on root
-        guard viewControllers.count > 1 else { return }
-        handleSwbGesture(g, in: view) { [weak self] in
-            self?.popViewController(animated: true)
+
+        if viewControllers.count > 1 {
+            // Pop — show wave and pop on complete
+            handleSwbGesture(g, in: view) { [weak self] in
+                self?.popViewController(animated: true)
+            }
+        } else if SwipeBackConfig.exitOnRootSwipe {
+            // Root screen — same double-swipe-to-exit behavior as left edge
+            handleSwbGesture(g, in: view) { [weak self] in
+                self?.triggerExitBehavior()
+            }
         }
     }
 
