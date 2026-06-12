@@ -10,7 +10,9 @@ Pod::Spec.new do |s|
     - Chevron arrow grows inside the wave as you drag
     - Haptic feedback at trigger threshold
     - Scroll view conflict resolved automatically
+    - Double-swipe to exit on root screen — both left and right edge, with wave animation
     - SwipeBackOverlayRegistry: register view-based sheets/popups to auto-block gesture
+    - iOS interactivePopGestureRecognizer fully suppressed — no double-pop conflict
     - Zero configuration — one line in AppDelegate
     - No subclassing required
   DESC
