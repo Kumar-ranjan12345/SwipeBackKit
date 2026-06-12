@@ -229,48 +229,166 @@ extension View {
 ///
 /// When any overlay is registered, SwipeBackKit suppresses the swipe-back gesture
 /// on the underlying navigation controller — just like it does for presented VCs.
+/// The overlay itself gets its own edge gesture that calls the provided dismiss action.
 ///
 /// **Usage inside your popup/bottom-sheet view:**
 /// ```swift
-/// // When the sheet appears:
 /// override func didMoveToWindow() {
 ///     super.didMoveToWindow()
 ///     if window != nil {
-///         SwipeBackOverlayRegistry.register(self)
+///         SwipeBackOverlayRegistry.register(self, onDismiss: { self.dismiss() })
 ///     } else {
 ///         SwipeBackOverlayRegistry.unregister(self)
 ///     }
 /// }
 /// ```
-/// That's all — no changes needed in the presenting view controller.
 public class SwipeBackOverlayRegistry {
 
     private static var overlays: NSHashTable<UIView> = .weakObjects()
     private static let lock = NSLock()
 
-    /// Register a view-based overlay. While at least one overlay is registered,
-    /// the swipe-back gesture is suppressed app-wide.
-    public static func register(_ view: UIView) {
+    /// Register a view-based overlay and attach a swipe-back edge gesture to it.
+    /// While registered, the nav controller's swipe gesture is suppressed.
+    /// The overlay itself will respond to edge swipes by calling `onDismiss`.
+    ///
+    /// - parameter view:      The overlay view (bottom sheet, popup, drawer).
+    /// - parameter onDismiss: Called when the user completes a swipe gesture on the overlay.
+    public static func register(_ view: UIView, onDismiss: @escaping () -> Void) {
         lock.lock()
         defer { lock.unlock() }
         overlays.add(view)
+        attachGestures(to: view, onDismiss: onDismiss)
     }
 
-    /// Unregister a view-based overlay. When all overlays are removed,
-    /// swipe-back resumes normally.
+    /// Unregister a view-based overlay and remove its swipe gestures.
     public static func unregister(_ view: UIView) {
         lock.lock()
         defer { lock.unlock() }
         overlays.remove(view)
+        removeGestures(from: view)
     }
 
     /// Returns `true` if any view-based overlay is currently registered.
     public static var hasActiveOverlay: Bool {
         lock.lock()
         defer { lock.unlock() }
-        // NSHashTable with weakObjects auto-nils deallocated entries —
-        // allObjects filters those out, so count is always accurate.
         return overlays.allObjects.isEmpty == false
+    }
+
+    // MARK: - Private gesture attachment
+
+    private static func attachGestures(to view: UIView, onDismiss: @escaping () -> Void) {
+        // Remove any existing swb_overlay gestures first (avoid duplicates)
+        removeGestures(from: view)
+
+        let handler = SwbOverlayGestureHandler(view: view, onDismiss: onDismiss)
+
+        if SwipeBackConfig.leftEdge {
+            let g = SwbEdgeGestureRecognizer(
+                target: handler,
+                action: #selector(SwbOverlayGestureHandler.handlePan(_:))
+            )
+            g.edges = .left
+            g.name  = "swb_overlay_left"
+            view.addGestureRecognizer(g)
+        }
+        if SwipeBackConfig.rightEdge {
+            let g = SwbEdgeGestureRecognizer(
+                target: handler,
+                action: #selector(SwbOverlayGestureHandler.handlePan(_:))
+            )
+            g.edges = .right
+            g.name  = "swb_overlay_right"
+            view.addGestureRecognizer(g)
+        }
+
+        // Retain the handler via associated object so it stays alive
+        objc_setAssociatedObject(view, &kOverlayHandler, handler, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    }
+
+    private static func removeGestures(from view: UIView) {
+        view.gestureRecognizers?
+            .filter { $0.name == "swb_overlay_left" || $0.name == "swb_overlay_right" }
+            .forEach { view.removeGestureRecognizer($0) }
+        objc_setAssociatedObject(view, &kOverlayHandler, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    }
+}
+
+private var kOverlayHandler: UInt8 = 0
+
+/// Handles edge pan gestures on a registered overlay view.
+/// Uses the same wave animation as nav pop/dismiss.
+private class SwbOverlayGestureHandler: NSObject {
+    weak var view: UIView?
+    let onDismiss: () -> Void
+
+    init(view: UIView, onDismiss: @escaping () -> Void) {
+        self.view = view
+        self.onDismiss = onDismiss
+    }
+
+    @objc func handlePan(_ g: UIScreenEdgePanGestureRecognizer) {
+        guard let view = view else { return }
+
+        let isLeft   = g.edges == .left
+        let loc      = g.location(in: view)
+        let trans    = g.translation(in: view)
+        let dragX    = max(0, isLeft ? trans.x : -trans.x)
+        let progress = min(1.0, dragX / 130.0)
+
+        switch g.state {
+        case .began:
+            let overlay = SwipeWaveOverlay(isLeft: isLeft)
+            overlay.frame = view.bounds
+            overlay.isUserInteractionEnabled = false
+            view.addSubview(overlay)
+            objc_setAssociatedObject(view, &kOverlay, overlay, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            if SwipeBackConfig.haptic { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+
+        case .changed:
+            guard let wave = objc_getAssociatedObject(view, &kOverlay) as? SwipeWaveOverlay else { return }
+            wave.update(fingerY: loc.y, progress: progress)
+            if progress >= 0.5 && !wave.thresholdReached {
+                wave.thresholdReached = true
+                if SwipeBackConfig.haptic { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
+            } else if progress < 0.5 {
+                wave.thresholdReached = false
+            }
+
+        case .ended:
+            let vel        = g.velocity(in: view)
+            let fastEnough = isLeft ? vel.x > 500 : vel.x < -500
+            let farEnough  = progress >= 0.5
+            dismissWave(from: view, springBack: !(farEnough || fastEnough))
+            if farEnough || fastEnough {
+                if SwipeBackConfig.haptic { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
+                onDismiss()
+            }
+
+        case .cancelled, .failed:
+            dismissWave(from: view, springBack: true)
+
+        default: break
+        }
+    }
+
+    private func dismissWave(from view: UIView, springBack: Bool) {
+        guard let wave = objc_getAssociatedObject(view, &kOverlay) as? SwipeWaveOverlay else { return }
+        if springBack {
+            UIView.animate(withDuration: 0.4, delay: 0, usingSpringWithDamping: 0.6,
+                           initialSpringVelocity: 0.8, options: [.curveEaseOut]) {
+                wave.springBack()
+            } completion: { _ in
+                UIView.animate(withDuration: 0.15) { wave.alpha = 0 } completion: { _ in
+                    wave.removeFromSuperview()
+                }
+            }
+        } else {
+            UIView.animate(withDuration: 0.2, animations: { wave.alpha = 0 }) { _ in
+                wave.removeFromSuperview()
+            }
+        }
+        objc_setAssociatedObject(view, &kOverlay, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
     }
 }
 
