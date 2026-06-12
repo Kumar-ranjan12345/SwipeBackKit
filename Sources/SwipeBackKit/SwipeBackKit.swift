@@ -222,6 +222,58 @@ extension View {
 }
 #endif
 
+// MARK: - Overlay Registry
+
+/// Tracks view-based overlays (bottom sheets, popups, drawers) that are shown
+/// as subviews rather than presented view controllers.
+///
+/// When any overlay is registered, SwipeBackKit suppresses the swipe-back gesture
+/// on the underlying navigation controller — just like it does for presented VCs.
+///
+/// **Usage inside your popup/bottom-sheet view:**
+/// ```swift
+/// // When the sheet appears:
+/// override func didMoveToWindow() {
+///     super.didMoveToWindow()
+///     if window != nil {
+///         SwipeBackOverlayRegistry.register(self)
+///     } else {
+///         SwipeBackOverlayRegistry.unregister(self)
+///     }
+/// }
+/// ```
+/// That's all — no changes needed in the presenting view controller.
+public class SwipeBackOverlayRegistry {
+
+    private static var overlays: NSHashTable<UIView> = .weakObjects()
+    private static let lock = NSLock()
+
+    /// Register a view-based overlay. While at least one overlay is registered,
+    /// the swipe-back gesture is suppressed app-wide.
+    public static func register(_ view: UIView) {
+        lock.lock()
+        defer { lock.unlock() }
+        overlays.add(view)
+    }
+
+    /// Unregister a view-based overlay. When all overlays are removed,
+    /// swipe-back resumes normally.
+    public static func unregister(_ view: UIView) {
+        lock.lock()
+        defer { lock.unlock() }
+        overlays.remove(view)
+    }
+
+    /// Returns `true` if any view-based overlay is currently registered.
+    public static var hasActiveOverlay: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        // NSHashTable with weakObjects auto-nils deallocated entries —
+        // allObjects filters those out, so count is always accurate.
+        return overlays.allObjects.isEmpty == false
+    }
+}
+
 // MARK: - Internal Configuration
 
 private class SwipeBackConfig {
@@ -317,6 +369,8 @@ extension UINavigationController {
     @objc func swb_navPan(_ g: UIScreenEdgePanGestureRecognizer) {
         // Don't fire if a sheet/modal is currently presented on top
         if presentedViewController != nil { return }
+        // Don't fire if a view-based overlay (bottom sheet, popup, drawer) is active
+        if SwipeBackOverlayRegistry.hasActiveOverlay { return }
         // Check if top VC has swipe disabled
         if let topVC = topViewController, SwipeBackManager.isDisabled(for: topVC) { return }
 
@@ -419,6 +473,7 @@ extension UIViewController {
 
     @objc func swb_dismissPan(_ g: UIScreenEdgePanGestureRecognizer) {
         guard !SwipeBackManager.isDisabled(for: self) else { return }
+        guard !SwipeBackOverlayRegistry.hasActiveOverlay else { return }
         handleSwbGesture(g, in: view) { [weak self] in
             self?.dismiss(animated: true)
         }

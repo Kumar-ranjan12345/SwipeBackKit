@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name         = 'SwipeBackKit'
-  s.version      = '1.3.5'
+  s.version      = '1.3.6'
   s.summary      = 'Android-style edge swipe navigation for iOS — predictive back, both edges, wave animation, push & present support.'
   s.description  = <<-DESC
     SwipeBackKit brings Android 10+ style back gesture to iOS.
@@ -10,6 +10,7 @@ Pod::Spec.new do |s|
     - Chevron arrow grows inside the wave as you drag
     - Haptic feedback at trigger threshold
     - Scroll view conflict resolved automatically
+    - SwipeBackOverlayRegistry: register view-based sheets/popups to auto-block gesture
     - Zero configuration — one line in AppDelegate
     - No subclassing required
   DESC
