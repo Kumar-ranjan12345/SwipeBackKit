@@ -18,6 +18,11 @@ Android-style edge swipe navigation for iOS — both edges, elastic wave animati
 - **Spring-back animation** — wave bounces back to edge when gesture is cancelled
 - **Zero config** — one line in AppDelegate, no subclassing
 
+## What's New in v1.4.0
+
+- **Overlay swipe-to-dismiss** — `SwipeBackOverlayRegistry.register(_:onDismiss:)` now attaches the edge gesture directly to the overlay view. Swiping on the sheet shows the wave animation and calls your dismiss closure — exactly like swiping on a presented VC
+- **Breaking change** — `register(_:)` now requires an `onDismiss` closure: `register(self, onDismiss: { self.dismiss() })`
+
 ## What's New in v1.3.9
 
 - **Right edge on root** — right edge now also shows "Swipe again to exit" toast and exits on double swipe (same as left)
@@ -51,12 +56,12 @@ https://github.com/Kumar-ranjan12345/SwipeBackKit
 ### CocoaPods
 
 ```ruby
-pod 'SwipeBackKit', '~> 1.3.9'
+pod 'SwipeBackKit', '~> 1.4.0'
 ```
 
 > If the CDN hasn't propagated yet, install directly from GitHub:
 > ```ruby
-> pod 'SwipeBackKit', :git => 'https://github.com/Kumar-ranjan12345/SwipeBackKit.git', :tag => '1.3.9'
+> pod 'SwipeBackKit', :git => 'https://github.com/Kumar-ranjan12345/SwipeBackKit.git', :tag => '1.4.0'
 > ```
 
 ## Usage
