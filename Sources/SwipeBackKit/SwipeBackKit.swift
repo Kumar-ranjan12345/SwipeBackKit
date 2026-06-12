@@ -334,6 +334,18 @@ private class SwipeBackConfig {
     }
 }
 
+// MARK: - SwbNeverDelegate
+
+/// A gesture recognizer delegate that always denies recognition.
+/// Used to permanently suppress iOS's built-in interactivePopGestureRecognizer
+/// so it never conflicts with our custom left-edge gesture.
+private class SwbNeverDelegate: NSObject, UIGestureRecognizerDelegate {
+    static let shared = SwbNeverDelegate()
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        return false
+    }
+}
+
 // MARK: - Associated Object Keys
 
 private var kOverlay:   UInt8 = 0
@@ -345,11 +357,13 @@ extension UINavigationController {
 
     @objc func swb_navViewDidLoad() {
         swb_navViewDidLoad()
-        // Nil out the delegate instead of disabling entirely.
-        // isEnabled = false breaks SwiftUI NavigationStack transitions and nested containers.
-        // Nilling the delegate prevents iOS's built-in left-edge pop from conflicting
-        // with our gesture, while keeping the recognizer itself non-destructively intact.
-        interactivePopGestureRecognizer?.delegate = nil
+        // Disable iOS's built-in interactive pop gesture entirely.
+        // We replace it with our own left-edge gesture that has wave animation.
+        // Setting delegate = nil re-enables default behavior, so we use a
+        // dedicated "always deny" delegate object instead.
+        interactivePopGestureRecognizer?.isEnabled = false
+        interactivePopGestureRecognizer?.delegate = SwbNeverDelegate.shared
+
         // Issue 1 fix: guard against duplicate gesture registration.
         // viewDidLoad can be called multiple times on recreated nav controllers.
         let hasLeft  = view.gestureRecognizers?.contains(where: { $0.name == "swb_left_edge"  }) ?? false
@@ -360,12 +374,13 @@ extension UINavigationController {
             view.addGestureRecognizer(g)
         }
         if SwipeBackConfig.rightEdge && !hasRight {
-            let g = makeSwbEdgeGesture(.right, target: self, action: #selector(swb_navPan(_:)))
+            let g = makeSwbEdgeGesture(.right, target: self, action: #selector(swb_navPanRight(_:)))
             g.name = "swb_right_edge"
             view.addGestureRecognizer(g)
         }
     }
 
+    /// Handles LEFT edge swipe — pop or root-exit.
     @objc func swb_navPan(_ g: UIScreenEdgePanGestureRecognizer) {
         // Don't fire if a sheet/modal is currently presented on top
         if presentedViewController != nil { return }
@@ -380,6 +395,24 @@ extension UINavigationController {
             }
         } else if SwipeBackConfig.exitOnRootSwipe {
             handleRootSwipe(g)
+        }
+    }
+
+    /// Handles RIGHT edge swipe — pop only, never root-exit.
+    /// Right edge mirrors Android 10+ behavior: go back. It never triggers
+    /// the "swipe again to exit" toast because swiping right on root is
+    /// a natural accidental gesture on iOS (edge of screen near home indicator).
+    @objc func swb_navPanRight(_ g: UIScreenEdgePanGestureRecognizer) {
+        // Don't fire if a sheet/modal is currently presented on top
+        if presentedViewController != nil { return }
+        // Don't fire if a view-based overlay is active
+        if SwipeBackOverlayRegistry.hasActiveOverlay { return }
+        // Check if top VC has swipe disabled
+        if let topVC = topViewController, SwipeBackManager.isDisabled(for: topVC) { return }
+        // Right edge only pops — never shows exit toast on root
+        guard viewControllers.count > 1 else { return }
+        handleSwbGesture(g, in: view) { [weak self] in
+            self?.popViewController(animated: true)
         }
     }
 
